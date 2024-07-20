@@ -28,49 +28,34 @@ This guide explains how to set up a CI/CD pipeline using GitHub Actions with a s
 Create a `.github/workflows/deploy.yml` file in your repository:
 
 ```yaml
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of Node.js
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
 name: Node.js CI/CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  build:
     runs-on: self-hosted
-
+    strategy:
+      matrix:
+        node-version: [ 18.x ]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v2
+    - uses: actions/checkout@v3
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
       with:
-        node-version: '14'
-
-    - name: Install dependencies
-      run: npm install
-
-    - name: Run tests
-      run: npm test
-
-    - name: Deploy to EC2
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: 'us-east-1'  # Change to your AWS region
-        EC2_USER: 'ec2-user'    # Change to your EC2 username
-        EC2_HOST: ${{ secrets.EC2_HOST }}
-        EC2_KEY_PATH: '/path/to/your/key.pem'  # Path to the key on the runner
-      run: |
-        chmod 400 $EC2_KEY_PATH
-        scp -o StrictHostKeyChecking=no -i $EC2_KEY_PATH -r ./* $EC2_USER@$EC2_HOST:~/app
-        ssh -o StrictHostKeyChecking=no -i $EC2_KEY_PATH $EC2_USER@$EC2_HOST << 'EOF'
-          cd ~/app
-          npm install
-          pm2 restart all || pm2 start index.js
-        EOF
-      shell: bash
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - run: |
+        touch .env
+        echo "${{ secrets.PROD_ENV_FILE }}" > .env
+    - run: pm2 restart BackendAPI
 ```
 
 ### 3. Storing Secrets in GitHub
@@ -79,6 +64,7 @@ Go to your repository on GitHub, navigate to **Settings > Secrets and variables 
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `EC2_HOST`
+- `PROD_ENV_FILE` (Your environment variables content)
 
 ### 4. Configuring the Self-Hosted Runner
 
